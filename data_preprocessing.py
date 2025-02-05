@@ -148,6 +148,20 @@ def save_data_numpy(X_data, y_data, mask_data, save_path="dataset.npz"):
     np.savez_compressed(save_path, X_data=X_data, y_data=y_data, mask_data=mask_data)
     print(f"✅ 數據已成功儲存至 {save_path}")
 
+def verify_mask(mask_data, num_samples=3):
+    """
+    打印部分掩码数据以验证其正确性。
+
+    Args:
+        mask_data (np.array): 生成的遮罩数据。
+        num_samples (int): 要验证的样本数量。
+    """
+    print("\n=== 遮罩數據驗證 ===")
+    for i in range(num_samples):
+        print(f"\n📌 **樣本 {i + 1} 的遮罩:**")
+        print(mask_data[i].flatten())
+    print("\n=== 驗證結束 ===\n")
+
 
 ### -------------------- 5. 主程式 --------------------
 if __name__ == "__main__":
@@ -161,6 +175,9 @@ if __name__ == "__main__":
     print(f"X_data shape: {X_data.shape}")
     print(f"y_data shape: {y_data.shape}")
     print(f"mask_data shape: {mask_data.shape}")
+
+    # **驗證遮罩數據**
+    verify_mask(mask_data, num_samples=3)
 
     # **更新: 使用新的可視化函數**
     visualize_data(X_data, y_data, mask_data, num_samples=config["num_samples_to_visualize"])
