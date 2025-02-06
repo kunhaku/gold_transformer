@@ -3,6 +3,7 @@ from tensorflow import keras
 from tensorflow.keras.layers import Layer, MultiHeadAttention, Dense, Dropout, LayerNormalization
 import numpy as np
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
+from tqdm import tqdm
 
 
 
@@ -71,22 +72,45 @@ class RecurrentTransformerModel(keras.Model):
         out = self.final_dense(x_last)
         return out
 
+# 3) 自訂損失函數
+def masked_mse_loss(y_true, y_pred, y_mask):
+    """
+    y_true, y_pred, y_mask 形狀: (batch_size, forecast_length)
+    只對 y_mask=1 的位置計算 (y_true - y_pred)^2，其他位置忽略。
+    """
+    # element-wise (y_true - y_pred)^2
+    sq_err = tf.square(y_true - y_pred)
+    # masked
+    masked_sq_err = sq_err * y_mask
+    # 對每個樣本來說，sum起來之後，除以有效數量
+    sum_err = tf.reduce_sum(masked_sq_err, axis=1)  # shape (batch,)
+    valid_counts = tf.reduce_sum(y_mask, axis=1)    # (batch,)
+    # 避免除以0
+    valid_counts = tf.where(valid_counts == 0, 1., valid_counts)
+    mse_per_sample = sum_err / valid_counts
+    # 再對 batch 做平均
+    return tf.reduce_mean(mse_per_sample)
+
+
 # 3) 自訂 train step
 @tf.function
-def train_step(model, optimizer, loss_fn, x, m, y, past_preds):
+def train_step(model, optimizer, x, m, y, y_mask, past_preds):
     with tf.GradientTape() as tape:
         preds = model(x, mask=m, past_preds=past_preds, training=True)
-        loss = loss_fn(y, preds)
+        # 自訂 masked loss
+        loss = masked_mse_loss(y, preds, y_mask)
     grads = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(grads, model.trainable_variables))
     return preds, loss
 
+
 def main():
     # === 讀取 scaled 的 train 資料 ===
-    data_train = np.load("train_scaled.npz")
+    data_train = np.load("train_raw.npz")
     X_train = data_train["X_data"]
     y_train = data_train["y_data"]
     m_train = data_train["mask_data"]
+    y_mask_train = data_train["y_mask_data"]  # <--- 新增
     g_train = data_train["group_ids"]
 
     print("Train X shape:", X_train.shape)
@@ -109,14 +133,13 @@ def main():
         dropout_rate=0.1
     )
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
-    loss_fn = tf.keras.losses.MeanSquaredError()
 
-    EPOCHS = 5
-    for epoch in range(EPOCHS):
+    EPOCHS = 2
+    for epoch in tqdm(range(EPOCHS), desc="Training Epochs"):
+
         epoch_loss = 0.0
         steps = 0
 
-        # (1) 每個 epoch 開始先建立空的 list 收集所有預測
         epoch_true_values = []
         epoch_predictions = []
 
@@ -124,19 +147,21 @@ def main():
             idxs = np.where(g_train == g)[0]
             past_preds = tf.zeros((1, forecast_length), dtype=tf.float32)
 
-            # 逐筆訓練 (batch=1)
             for i in idxs:
-                x_i = X_train[i][None, ...]
-                y_i = y_train[i][None, ...]
-                m_i = m_train[i][None, ...]
+                x_i = X_train[i][None, ...]  # shape (1, seq_len, input_dim)
+                y_i = y_train[i][None, ...]  # (1, forecast_length)
+                m_i = m_train[i][None, ...]  # (1, seq_len, 1)
+                y_mask_i = y_mask_train[i][None, ...]  # (1, forecast_length)
 
-                preds, loss_val = train_step(model, optimizer, loss_fn, x_i, m_i, y_i, past_preds)
+                preds, loss_val = train_step(
+                    model, optimizer,
+                    x_i, m_i, y_i, y_mask_i,
+                    past_preds
+                )
                 past_preds = preds
 
-                # 收集 preds & 真值
                 epoch_predictions.append(preds.numpy().flatten())
                 epoch_true_values.append(y_i.flatten())
-
 
                 epoch_loss += loss_val.numpy()
                 steps += 1

@@ -1,6 +1,5 @@
 import numpy as np
-from sklearn.preprocessing import RobustScaler, robust_scale
-
+from sklearn.preprocessing import RobustScaler
 
 def group_based_scaling(X_data, mask_data, group_ids):
     scaled_X_data = np.copy(X_data)
@@ -38,7 +37,7 @@ def group_based_scaling(X_data, mask_data, group_ids):
         for i in range(len(X_g)):
             valid_len = int(m_g[i].sum())
             scaled_ohlc = scaler_ohlc.transform(X_g[i, 0:valid_len, 0:4])
-            scaled_vol = scaler_vol.transform(X_g[i, 0:valid_len, 4:5])
+            scaled_vol  = scaler_vol.transform(X_g[i, 0:valid_len, 4:5])
             scaled_X_data[idxs[i], 0:valid_len, 0:4] = scaled_ohlc
             scaled_X_data[idxs[i], 0:valid_len, 4:5] = scaled_vol
 
@@ -48,12 +47,6 @@ def group_based_scaling(X_data, mask_data, group_ids):
 
 
 def apply_group_scaling(X_data, mask_data, group_ids, scalers_dict):
-    """
-    給 test 用:
-      依照 train 時得到的 scalers_dict[g],
-      對同一個 group_id=g 的樣本做 transform
-      若遇到沒有的 group id，就另外 fit / or skip
-    """
     scaled_X_data = np.copy(X_data)
     unique_g = np.unique(group_ids)
 
@@ -62,10 +55,8 @@ def apply_group_scaling(X_data, mask_data, group_ids, scalers_dict):
         if len(idxs) == 0:
             continue
 
-        # 如果該 group 沒有在 train 出現，根據需求決定怎麼處理
         if g not in scalers_dict:
-            # 這裡簡單示範: 不做 scaling (直接維持原值)
-            # or 你也可以在這裡現場 fit
+            # 若該 group 未出現在訓練集，可視需求處理 (這裡示範直接略過)
             continue
 
         scaler_ohlc, scaler_vol = scalers_dict[g]
@@ -76,11 +67,11 @@ def apply_group_scaling(X_data, mask_data, group_ids, scalers_dict):
             valid_len = int(m_g[i].sum())
             scaled_ohlc = scaler_ohlc.transform(X_g[i, 0:valid_len, 0:4])
             scaled_vol  = scaler_vol.transform(X_g[i, 0:valid_len, 4:5])
-
             scaled_X_data[idxs[i], 0:valid_len, 0:4] = scaled_ohlc
             scaled_X_data[idxs[i], 0:valid_len, 4:5] = scaled_vol
 
     return scaled_X_data
+
 
 def main():
     # 1. 讀取 train_raw.npz
@@ -90,15 +81,19 @@ def main():
     m_train = train_raw["mask_data"]
     g_train = train_raw["group_ids"]
 
-    # 2. 對 train 做 group-based scaling
+    # (若原始資料中也包含 y_mask_data，就一起讀取)
+    y_mask_train = train_raw["y_mask_data"]  # 可視實際需求讀取
+
+    # 2. 對 train 的 X_data 做 group-based scaling
     scaled_X_train, scalers_dict = group_based_scaling(X_train, m_train, g_train)
 
-    # 3. 儲存 scaled train
+    # 3. 儲存 scaled train 與不需要縮放的資料
     np.savez_compressed("train_scaled.npz",
-        X_data=scaled_X_train,
-        y_data=y_train,
-        mask_data=m_train,
-        group_ids=g_train
+                        X_data=scaled_X_train,   # 已縮放
+                        y_data=y_train,         # 未縮放
+                        mask_data=m_train,      # 未縮放
+                        group_ids=g_train,       # 未縮放
+                        y_mask_data=y_mask_train
     )
     print("已產生 train_scaled.npz")
 
@@ -109,17 +104,22 @@ def main():
     m_test = test_raw["mask_data"]
     g_test = test_raw["group_ids"]
 
-    # 5. 用 train 的 scalers_dict transform test
+    # (若原始測試資料中也有 y_mask_test，同樣可一起讀取)
+    y_mask_test = test_raw["y_mask_data"]
+
+    # 5. 用前面 train 得到的 scalers_dict 對 test 的 X_data 做 transform
     scaled_X_test = apply_group_scaling(X_test, m_test, g_test, scalers_dict)
 
-    # 6. 儲存 scaled test
+    # 6. 儲存 scaled test 與不需要縮放的資料
     np.savez_compressed("test_scaled.npz",
-        X_data=scaled_X_test,
-        y_data=y_test,
-        mask_data=m_test,
-        group_ids=g_test
+                        X_data=scaled_X_test,  # 已縮放
+                        y_data=y_test,         # 未縮放
+                        mask_data=m_test,      # 未縮放
+                        group_ids=g_test,
+                        y_mask_data=y_mask_test
     )
     print("已產生 test_scaled.npz")
+
 
 if __name__ == "__main__":
     main()

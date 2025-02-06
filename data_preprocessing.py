@@ -41,6 +41,7 @@ def prepare_data_and_split(df, config):
     """
     from tensorflow.keras.preprocessing.sequence import pad_sequences
     X_list, y_list, mask_list, group_id_list = [], [], [], []
+    y_mask_list = []
 
     data = df[['open', 'high', 'low', 'close', 'tick_volume']].values
     total_length = len(data)
@@ -59,10 +60,18 @@ def prepare_data_and_split(df, config):
         y = data[start_index + input_length: start_index + input_length + forecast_length, 3]  # close
         mask = np.ones((input_length, 1))
 
+        # - 產生 y_mask: shape=(forecast_length,)，都為 1
+        #   後續會再 pad 到 (max_forecast_length,)。
+        #   當然，也可以先建立成 shape=(max_forecast_length,)，前f個1、後面0
+        #   看你 padding 方式而定。這裡先產生 shape=(f,)
+        y_mask_unpadded = np.ones((forecast_length,), dtype='float32')
+
         X_list.append(X)
         y_list.append(y)
         mask_list.append(mask)
         group_id_list.append(current_group_id)
+        # 先存下這個 unpadded mask
+        y_mask_list.append(y_mask_unpadded)
 
         # 動態調整 input_length/forecast_length
         if forecast_length > min_forecast_length:
@@ -85,20 +94,29 @@ def prepare_data_and_split(df, config):
     filtered_y_list = []
     filtered_mask_list = []
     filtered_group_id_list = []
+    filtered_y_mask_list = []
 
-    for X_item, y_item, m_item, gid_item in zip(X_list, y_list, mask_list, group_id_list):
+    for X_item, y_item, m_item, gid_item, y_mask_item in zip(X_list, y_list, mask_list, group_id_list, y_mask_list):
         if gid_item <= last_completed_group_id:
             filtered_X_list.append(X_item)
             filtered_y_list.append(y_item)
             filtered_mask_list.append(m_item)
             filtered_group_id_list.append(gid_item)
+            filtered_y_mask_list.append(y_mask_item)
 
-    # 使用 pad_sequences
+    # === pad X & mask ===
     X_padded = pad_sequences(filtered_X_list, maxlen=max_input_length, dtype='float32', padding='pre', value=0.0)
     mask_padded = pad_sequences(filtered_mask_list, maxlen=max_input_length, dtype='float32', padding='pre', value=0.0)
 
+    # === pad y (跟你原本相同) ===
+
     max_forecast_length = config["initial_forecast_length"]
     y_padded = pad_sequences(filtered_y_list, maxlen=max_forecast_length, dtype='float32', padding='post', value=0.0)
+
+    # === pad y_mask (跟 y 一樣的長度) ===
+    y_mask_padded = pad_sequences(filtered_y_mask_list, maxlen=max_forecast_length, dtype='float32', padding='post',
+                                  value=0.0)
+    # y_mask_padded.shape = (num_samples, max_forecast_length)
 
     group_ids = np.array(filtered_group_id_list, dtype=np.int32)
 
@@ -123,7 +141,15 @@ def prepare_data_and_split(df, config):
     mask_test = mask_padded[test_mask]
     group_test = group_ids[test_mask]
 
-    return (X_train, y_train, mask_train, group_train), (X_test, y_test, mask_test, group_test)
+    # train
+    y_mask_train = y_mask_padded[train_mask]
+    ...
+    # test
+    y_mask_test = y_mask_padded[test_mask]
+
+
+    return (X_train, y_train, mask_train, y_mask_train, group_train), (X_test, y_test, mask_test, y_mask_test, group_test)
+
 
 
 
@@ -142,15 +168,17 @@ def visualize_data(X, y, mask, group_ids, num_samples=3):
         print("🔹 輸出:", output_values.tolist())
 
 
-def save_data_numpy(X_data, y_data, mask_data, group_ids, save_path):
+def save_data_numpy(X_data, y_data, mask_data, y_mask_data, group_ids, save_path):
     np.savez_compressed(
         save_path,
         X_data=X_data,
         y_data=y_data,
         mask_data=mask_data,
+        y_mask_data=y_mask_data,
         group_ids=group_ids
     )
     print(f"✅ 已儲存至 {save_path}")
+
 
 
 # -------------------- 5. 主程式 --------------------
@@ -160,7 +188,7 @@ if __name__ == "__main__":
     print("原始資料筆數:", len(df))
 
     # 產生 (X, y, mask) + 分群 + train/test split
-    (X_train, y_train, m_train, g_train), (X_test, y_test, m_test, g_test) = prepare_data_and_split(df, config)
+    (X_train, y_train, m_train,y_mask_train, g_train), (X_test, y_test, m_test, y_mask_test, g_test) = prepare_data_and_split(df, config)
 
     print("\n[Train] X shape:", X_train.shape, "y shape:", y_train.shape, "mask shape:", m_train.shape)
     print("[Test]  X shape:", X_test.shape,  "y shape:", y_test.shape,  "mask shape:", m_test.shape)
@@ -172,6 +200,7 @@ if __name__ == "__main__":
     visualize_data(X_train, y_train, m_train, g_train, num_samples=config["num_samples_to_visualize"])
 
     # 分別儲存
-    save_data_numpy(X_train, y_train, m_train, g_train, save_path="train_raw.npz")
-    save_data_numpy(X_test,  y_test,  m_test,  g_test,  save_path="test_raw.npz")
+    save_data_numpy(X_train, y_train, m_train, y_mask_train, g_train, "train_raw.npz")
+    save_data_numpy(X_test, y_test, m_test, y_mask_test, g_test, "test_raw.npz")
+
     print("全部處理完畢!")
