@@ -129,5 +129,15 @@ def update_graph(selected_group, selected_sample):
     )
     return fig
 
-if __name__ == "__main__":
+def run_visual_tool(config):
+    """
+    將執行 Dash App 的邏輯包裝成一個函式，供外部程式呼叫。
+    """
+    # 假設 config 中若有其他設定，可在此處理
+    # 例如：使用 config 中的 DB 連線路徑
+
     app.run_server(debug=True)
+
+if __name__ == "__main__":
+    run_visual_tool({})
+

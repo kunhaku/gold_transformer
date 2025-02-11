@@ -104,7 +104,7 @@ def train_step(model, optimizer, x, m, y, y_mask, past_preds):
     return preds, loss
 
 
-def main():
+def run_training():
     # === 讀取 scaled 的 train 資料 ===
     data_train = np.load("train_raw.npz")
     X_train = data_train["X_data"]
@@ -190,4 +190,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_training()

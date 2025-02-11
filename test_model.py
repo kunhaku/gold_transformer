@@ -3,7 +3,7 @@ import sqlite3
 import numpy as np
 import tensorflow as tf
 
-def main():
+def run_test_model():
     # === 1) 讀取測試資料 ===
     data_test = np.load("test_raw.npz")
     X_test = data_test["X_data"]       # (num_test_samples, seq_len, input_dim)
@@ -93,4 +93,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    run_test_model()
