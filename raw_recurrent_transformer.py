@@ -134,7 +134,7 @@ def run_training():
     )
     optimizer = tf.keras.optimizers.Adam(learning_rate=1e-3)
 
-    EPOCHS = 2
+    EPOCHS = 10
     for epoch in tqdm(range(EPOCHS), desc="Training Epochs"):
 
         epoch_loss = 0.0
@@ -185,7 +185,7 @@ def run_training():
 
     print("訓練完成!")
 
-    model.save(r"G:\GoldFX_Transformer\models\model_b", save_format="tf")
+    model.save(r"E:\Pycharm\gold_transformer\models\model_b", save_format="tf")
     print('模型已儲存為 "model_b"')
 
 

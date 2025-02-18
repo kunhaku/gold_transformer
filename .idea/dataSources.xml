@@ -1,14 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <project version="4">
   <component name="DataSourceManagerImpl" format="xml" multifile-model="true">
-    <data-source source="LOCAL" name="mt5_data" uuid="204170f4-146a-4c0c-82f9-703c3c9aab0e">
+    <data-source source="LOCAL" name="predictions" uuid="d07ed1e6-3638-4d01-8aed-49a4cc42ac60">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:G:\GoldFX_Transformer\mt5_data.db</jdbc-url>
-      <jdbc-additional-properties>
-        <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
-      </jdbc-additional-properties>
+      <jdbc-url>jdbc:sqlite:E:\Pycharm\gold_transformer\predictions.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
       <libraries>
         <library>
@@ -19,14 +16,11 @@
         </library>
       </libraries>
     </data-source>
-    <data-source source="LOCAL" name="predictions" uuid="6eef1685-0344-4ae3-9135-b3619db174d7">
+    <data-source source="LOCAL" name="mt5_data" uuid="ea5fd305-4f31-4d88-9374-c467e027277b">
       <driver-ref>sqlite.xerial</driver-ref>
       <synchronize>true</synchronize>
       <jdbc-driver>org.sqlite.JDBC</jdbc-driver>
-      <jdbc-url>jdbc:sqlite:G:\GoldFX_Transformer\predictions.db</jdbc-url>
-      <jdbc-additional-properties>
-        <property name="com.intellij.clouds.kubernetes.db.enabled" value="false" />
-      </jdbc-additional-properties>
+      <jdbc-url>jdbc:sqlite:E:\Pycharm\gold_transformer\mt5_data.db</jdbc-url>
       <working-dir>$ProjectFileDir$</working-dir>
       <libraries>
         <library>
