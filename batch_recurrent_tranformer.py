@@ -121,7 +121,7 @@ def run_training_batch(
     model = RecurrentTransformerModel(
         input_dim=input_dim,
         forecast_length=forecast_length,
-        num_layers=4,
+        num_layers=2,
         embed_dim=64,
         num_heads=4,
         ff_dim=128,

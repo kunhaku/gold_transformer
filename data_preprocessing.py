@@ -7,10 +7,10 @@ from tensorflow.keras.preprocessing.sequence import pad_sequences
 config = {
     "db_path": "mt5_data.db",        # SQLite 數據庫路徑
     "table_name": "main.XAUUSD",      # 數據表名稱
-    "initial_input_length": 20,       # 最短的輸入長度
-    "max_input_length": 30,           # 最大的輸入長度 (padding 用)
-    "initial_forecast_length": 10,    # 最初的預測長度
-    "min_forecast_length": 3,         # 最小的預測長度
+    "initial_input_length": 36,       # 最短的輸入長度
+    "max_input_length": 48,           # 最大的輸入長度 (padding 用)
+    "initial_forecast_length": 24,    # 最初的預測長度
+    "min_forecast_length": 10,         # 最小的預測長度
     "num_samples_to_visualize": 5,    # 可視化的樣本數
     "train_ratio": 0.8,               # 訓練集佔比 (群組層面)
     # 定義原始特徵與新增的指標（依 config 順序決定最終的特徵排列）
