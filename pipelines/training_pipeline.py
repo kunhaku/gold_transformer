@@ -51,3 +51,7 @@ def run_training_pipeline(data_config: DataConfig | None = None, model_config: M
         "training_history": history,
         "inference_metrics": inference_metrics,
     }
+
+
+if __name__ == "__main__":
+    run_training_pipeline()

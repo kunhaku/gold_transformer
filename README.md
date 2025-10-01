@@ -12,7 +12,7 @@ The **Gold Transformer** project provides a refactored pipeline for training and
 | `evaluation/` | Inference routine that persists predictions to SQLite and computes regression metrics. |
 | `pipelines/` | High-level orchestration for end-to-end training. |
 | `visual_tool.py` | Dash application for inspecting saved predictions. |
-| Legacy helpers (`config.py`, `data_preprocessing.py`, `test_model.py`) | Thin wrappers around the refactored modules for existing scripts. |
+| Legacy helpers (`config.py`, `legacy/data_preprocessing.py`, `legacy/test_model.py`) | Thin wrappers around the refactored modules for existing scripts. |
 
 ## Requirements
 
@@ -48,7 +48,7 @@ pip install tensorflow pandas numpy scikit-learn tqdm dash plotly MetaTrader5
 2. Launch the training pipeline:
 
    ```bash
-   python pipeline.py
+   python -m pipelines.training_pipeline
    ```
 
    This command loads data, generates rolling windows, trains the recurrent transformer, writes artifacts to the `artifacts/` and `models/` directories, saves predictions to SQLite, and opens the Dash visualization app for inspection.
@@ -71,7 +71,7 @@ run_training_pipeline(data_config, model_config)
 After training, reuse the stored model and dataset artifacts to regenerate predictions:
 
 ```bash
-python test_model.py
+python legacy/test_model.py
 ```
 
 The compatibility wrapper loads the default artifacts and appends a fresh set of predictions to the SQLite database.
