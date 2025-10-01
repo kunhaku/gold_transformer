@@ -1,18 +1,15 @@
-# config.py
+"""Backwards-compatible accessors for configuration dataclasses."""
+
+from configs import DataConfig, ModelConfig
+
+
+data_config = DataConfig()
+model_config = ModelConfig()
+
+# Legacy dictionary-style access for existing scripts.
 config = {
-    "db_path": "mt5_data.db",
-    "table_name": "main.XAUUSD",
-    "initial_input_length": 20,
-    "max_input_length": 30,
-    "initial_forecast_length": 10,
-    "min_forecast_length": 3,
-    "num_samples_to_visualize": 5,
-    "train_ratio": 0.8,
-    # 定義原始特徵與新增的指標：
-    "base_features": ["open", "high", "low", "close", "tick_volume"],
-    "additional_indicators": [
-        "oc_dist", "oh_dist", "hl_dist", "lc_dist",
-        "RSI", "MA3", "MA12", "MA_diff",
-        "boll_upper", "boll_lower", "boll_bandwidth"
-    ]
+    "data": data_config,
+    "model": model_config,
 }
+
+__all__ = ["data_config", "model_config", "config"]
