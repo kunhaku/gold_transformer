@@ -156,4 +156,4 @@ def run_visual_tool(config: Dict) -> None:
         )
         return fig
 
-    app.run_server(debug=True)
+    app.run_server(debug=True, use_reloader=False)
