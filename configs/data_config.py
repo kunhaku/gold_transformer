@@ -20,6 +20,7 @@ class DataConfig:
     artifact_dir: str = "artifacts"
     train_dataset_filename: str = "train_dataset.npz"
     test_dataset_filename: str = "test_dataset.npz"
+    scaler_filename: str = "scaler_params.npz"
     prediction_db_filename: str = "predictions.db"
     base_features: List[str] = field(
         default_factory=lambda: [

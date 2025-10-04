@@ -2,8 +2,11 @@ from __future__ import annotations
 
 from typing import Tuple
 
+import numpy as np
+
 from configs import DataConfig, ModelConfig
 from data.datasets import SequenceDataset, prepare_datasets
+from data.scaling import apply_sequence_scaler, fit_sequence_scaler
 from evaluation import run_inference
 from models import train_model
 from utils.io import ensure_directory
@@ -26,6 +29,14 @@ def run_training_pipeline(data_config: DataConfig | None = None, model_config: M
     ensure_directory(str(model_config.model_path()))
 
     _, train_dataset, test_dataset = prepare_datasets(data_config)
+
+    scaler = fit_sequence_scaler(train_dataset)
+    train_dataset, scaler = apply_sequence_scaler(train_dataset, scaler)
+    test_dataset, _ = apply_sequence_scaler(test_dataset, scaler)
+
+    scaler_path = str(data_config.artifact_path(data_config.scaler_filename))
+    np.savez(scaler_path, **scaler)
+
     train_path, test_path = _save_artifacts(data_config, train_dataset, test_dataset)
 
     model, history = train_model(train_dataset, model_config)
@@ -47,6 +58,7 @@ def run_training_pipeline(data_config: DataConfig | None = None, model_config: M
             "test_dataset": test_path,
             "prediction_db": prediction_db_path,
             "model_path": str(model_config.model_path()),
+            "scaler": scaler_path,
         },
         "training_history": history,
         "inference_metrics": inference_metrics,

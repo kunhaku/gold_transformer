@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Dict, Tuple
 
 import numpy as np
 
@@ -19,6 +19,7 @@ class SequenceDataset:
     input_mask: np.ndarray
     target_mask: np.ndarray
     group_ids: np.ndarray
+    scaler: Dict[str, np.ndarray] | None = None
 
     def subset(self, mask: np.ndarray) -> "SequenceDataset":
         return SequenceDataset(
@@ -27,28 +28,46 @@ class SequenceDataset:
             input_mask=self.input_mask[mask],
             target_mask=self.target_mask[mask],
             group_ids=self.group_ids[mask],
+            scaler=self.scaler,
         )
 
-    def save(self, path: str) -> None:
+    def save(self, path: str, scaler: Dict[str, np.ndarray] | None = None) -> None:
         ensure_directory(path)
-        np.savez_compressed(
-            path,
-            X_data=self.inputs,
-            y_data=self.targets,
-            mask_data=self.input_mask,
-            y_mask_data=self.target_mask,
-            group_ids=self.group_ids,
-        )
+        npz_contents = {
+            "X_data": self.inputs,
+            "y_data": self.targets,
+            "mask_data": self.input_mask,
+            "y_mask_data": self.target_mask,
+            "group_ids": self.group_ids,
+        }
+
+        scaler_to_save = scaler if scaler is not None else self.scaler
+        if scaler_to_save is not None:
+            for key, value in scaler_to_save.items():
+                npz_contents[f"scaler_{key}"] = value
+
+        np.savez_compressed(path, **npz_contents)
 
     @staticmethod
     def load(path: str) -> "SequenceDataset":
         data = np.load(path)
+        scaler: Dict[str, np.ndarray] | None = None
+
+        scaler_keys = [
+            key for key in data.files if key.startswith("scaler_")
+        ]
+        if scaler_keys:
+            scaler = {
+                key.replace("scaler_", ""): data[key] for key in sorted(scaler_keys)
+            }
+
         return SequenceDataset(
             inputs=data["X_data"],
             targets=data["y_data"],
             input_mask=data["mask_data"],
             target_mask=data["y_mask_data"],
             group_ids=data["group_ids"],
+            scaler=scaler,
         )
 
 
