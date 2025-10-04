@@ -7,6 +7,7 @@ import numpy as np
 import tensorflow as tf
 
 from data.datasets import SequenceDataset
+from data.scaling import get_target_scaler, inverse_transform, load_scaler_metadata
 from evaluation.metrics import compute_regression_metrics
 from utils.io import ensure_directory
 
@@ -16,11 +17,18 @@ def run_inference(
     dataset: SequenceDataset,
     db_path: str,
     table_name: str = "model_b_inference",
+    *,
+    scaler_metadata: dict | None = None,
+    scaler_metadata_path: str | None = None,
 ) -> dict:
     """Run autoregressive inference on the dataset and persist results to SQLite."""
 
     ensure_directory(db_path)
     forecast_length = dataset.targets.shape[1]
+
+    if scaler_metadata is None:
+        scaler_metadata = load_scaler_metadata(scaler_metadata_path)
+    target_scaler = get_target_scaler(scaler_metadata)
 
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
@@ -68,6 +76,10 @@ def run_inference(
 
             pred_values = preds.numpy().flatten()
             true_values = y_i.flatten()
+
+            if target_scaler is not None:
+                pred_values = inverse_transform(pred_values, target_scaler)
+                true_values = inverse_transform(true_values, target_scaler)
             valid_length = int(np.sum(y_mask_i))
 
             row = [int(group_id), int(idx), valid_length]

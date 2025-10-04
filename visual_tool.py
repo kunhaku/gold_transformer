@@ -10,6 +10,13 @@ import plotly.graph_objs as go
 import sqlite3
 
 from data.datasets import SequenceDataset
+from data.scaling import (
+    get_feature_scaler,
+    get_target_scaler,
+    inverse_transform,
+    is_probably_scaled,
+    load_scaler_metadata,
+)
 
 
 def _load_predictions(db_path: str, table_name: str = "model_b_inference") -> pd.DataFrame:
@@ -32,6 +39,10 @@ def run_visual_tool(config: Dict) -> None:
 
     df_all = _load_predictions(db_path)
     test_dataset = _load_dataset(dataset_path)
+    scaler_metadata_path = config.get("scaler_metadata_path")
+    scaler_metadata = load_scaler_metadata(scaler_metadata_path)
+    close_input_scaler = get_feature_scaler(scaler_metadata, "close")
+    close_target_scaler = get_target_scaler(scaler_metadata, "close")
     if forecast_length is None:
         forecast_length = test_dataset.targets.shape[1]
 
@@ -84,6 +95,11 @@ def run_visual_tool(config: Dict) -> None:
         valid_length = int(df_sel["valid_length"].values[0])
         true_values = df_sel[y_cols].values[0][:valid_length]
         pred_values = df_sel[p_cols].values[0][:valid_length]
+
+        if close_target_scaler and is_probably_scaled(true_values, close_target_scaler):
+            true_values = inverse_transform(true_values, close_target_scaler)
+        if close_target_scaler and is_probably_scaled(pred_values, close_target_scaler):
+            pred_values = inverse_transform(pred_values, close_target_scaler)
         x_forecast = list(range(1, valid_length + 1))
 
         sample_idx = int(selected_sample)
@@ -91,6 +107,8 @@ def run_visual_tool(config: Dict) -> None:
         mask_sample = test_dataset.input_mask[sample_idx]
         effective_input_length = int(np.sum(mask_sample))
         input_values = X_sample[-effective_input_length:, 3]
+        if close_input_scaler and is_probably_scaled(input_values, close_input_scaler):
+            input_values = inverse_transform(input_values, close_input_scaler)
         x_input = list(range(-effective_input_length + 1, 1))
 
         trace_input = go.Scatter(

@@ -31,13 +31,20 @@ def run_training_pipeline(data_config: DataConfig | None = None, model_config: M
     model, history = train_model(train_dataset, model_config)
 
     prediction_db_path = str(data_config.artifact_path(data_config.prediction_db_filename))
-    inference_metrics = run_inference(model, test_dataset, prediction_db_path)
+    scaler_metadata_path = str(data_config.artifact_path(data_config.scaler_metadata_filename))
+    inference_metrics = run_inference(
+        model,
+        test_dataset,
+        prediction_db_path,
+        scaler_metadata_path=scaler_metadata_path,
+    )
 
     run_visual_tool(
         {
             "db_path": prediction_db_path,
             "dataset_path": test_path,
             "forecast_length": model_config.forecast_length or test_dataset.targets.shape[1],
+            "scaler_metadata_path": scaler_metadata_path,
         }
     )
 
@@ -46,6 +53,7 @@ def run_training_pipeline(data_config: DataConfig | None = None, model_config: M
             "train_dataset": train_path,
             "test_dataset": test_path,
             "prediction_db": prediction_db_path,
+            "scaler_metadata": scaler_metadata_path,
             "model_path": str(model_config.model_path()),
         },
         "training_history": history,

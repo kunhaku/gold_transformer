@@ -31,7 +31,13 @@ def run_test_model(
         model = tf.keras.models.load_model(path, compile=False)
 
     prediction_db_path = str(data_config.artifact_path(data_config.prediction_db_filename))
-    return run_inference(model, test_dataset, prediction_db_path)
+    scaler_metadata_path = str(data_config.artifact_path(data_config.scaler_metadata_filename))
+    return run_inference(
+        model,
+        test_dataset,
+        prediction_db_path,
+        scaler_metadata_path=scaler_metadata_path,
+    )
 
 
 if __name__ == "__main__":

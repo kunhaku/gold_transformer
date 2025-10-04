@@ -21,6 +21,7 @@ class DataConfig:
     train_dataset_filename: str = "train_dataset.npz"
     test_dataset_filename: str = "test_dataset.npz"
     prediction_db_filename: str = "predictions.db"
+    scaler_metadata_filename: str = "scaler_metadata.json"
     base_features: List[str] = field(
         default_factory=lambda: [
             "open",
