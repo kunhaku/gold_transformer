@@ -233,6 +233,22 @@ class RevisitSupervisor:
     def list_theses(self) -> List[TradeThesis]:
         return list(self._theses.values())
 
+    def get_trace(self, group_id: int) -> List[ForecastSnapshot]:
+        """Return the cached forecast snapshots for *group_id*.
+
+        The snapshots are reconstructed on-demand when the group is accessed
+        for the first time and subsequently reused until :meth:`reset_cache`
+        is called. The returned list is a shallow copy so callers can iterate
+        without mutating the internal cache.
+        """
+
+        return list(self._get_trace(group_id))
+
+    def trace_length(self, group_id: int) -> int:
+        """Return the number of forecast steps available for *group_id*."""
+
+        return len(self._get_trace(group_id))
+
     def reset_cache(self) -> None:
         """Clear cached traces, forcing recomputation on next access."""
 
