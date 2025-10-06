@@ -18,14 +18,16 @@ def _save_artifacts(data_config: DataConfig, train: SequenceDataset, test: Seque
     return train_path, test_path
 
 
-def run_training_pipeline(data_config: DataConfig | None = None, model_config: ModelConfig | None = None) -> dict:
+def run_training_pipeline(
+    data_config: DataConfig | None = None, model_config: ModelConfig | None = None
+) -> dict:
     data_config = data_config or DataConfig()
     model_config = model_config or ModelConfig()
 
     ensure_directory(str(data_config.artifact_path("placeholder")))
     ensure_directory(str(model_config.model_path()))
 
-    _, train_dataset, test_dataset = prepare_datasets(data_config)
+    full_dataset, train_dataset, test_dataset = prepare_datasets(data_config)
     train_path, test_path = _save_artifacts(data_config, train_dataset, test_dataset)
 
     model, history = train_model(train_dataset, model_config)
@@ -58,6 +60,12 @@ def run_training_pipeline(data_config: DataConfig | None = None, model_config: M
         },
         "training_history": history,
         "inference_metrics": inference_metrics,
+        "model": model,
+        "datasets": {
+            "full": full_dataset,
+            "train": train_dataset,
+            "test": test_dataset,
+        },
     }
 
 
