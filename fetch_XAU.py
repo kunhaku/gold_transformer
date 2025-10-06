@@ -17,9 +17,9 @@ CSV_PATH = os.path.join(CSV_DIR, "XAUUSD_data.csv")
 
 def initialize_mt5():
     """初始化 MetaTrader 5"""
-    login = 6360731
+    login = 1600028319
     server = "OANDA-Demo-1"
-    password = "Av!7UqPh"
+    password = "9Tda9309!"
 
     if not mt5.initialize(login=login, server=server, password=password):
         logging.error(f"initialize() failed, error code = {mt5.last_error()}")

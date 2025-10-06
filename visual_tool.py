@@ -1,133 +1,177 @@
+from __future__ import annotations
+
+from typing import Dict
+
 import dash
-from dash import dcc, html, Input, Output
+from dash import Input, Output, dcc, html
+import numpy as np
+import pandas as pd
 import plotly.graph_objs as go
 import sqlite3
-import pandas as pd
 
-# === 1) 從 SQLite 資料庫讀取推論結果 ===
-db_path = "predictions.db"
-conn = sqlite3.connect(db_path)
-df_all = pd.read_sql_query("SELECT * FROM model_b_inference", conn)
-conn.close()
-
-# df_all 應含欄位:
-#  - id, group_id, sample_idx, valid_length
-#  - y_1..y_n, p_1..p_n
-
-# 這裡假設 forecast_length=10，若不同可自行偵測
-forecast_length = 10
-y_cols = [f"y_{i+1}" for i in range(forecast_length)]
-p_cols = [f"p_{i+1}" for i in range(forecast_length)]
-
-# === 2) 確認可用的 group 與樣本清單 ===
-unique_groups = sorted(df_all["group_id"].unique().tolist())
-
-def get_samples_by_group(g):
-    df_group = df_all[df_all["group_id"] == g].copy()
-    chosen_idx = sorted(df_group["sample_idx"].unique().tolist())
-    return chosen_idx
-
-# === 3) 建立 Dash 應用，配置基礎介面 ===
-app = dash.Dash(__name__)
-
-app.layout = html.Div([
-    html.H3("Group 預測 vs. 真實值 (Plotly 折線圖)"),
-
-    # 下拉選單：選取 group
-    html.Label("選擇 group："),
-    dcc.Dropdown(
-        id="group-dropdown",
-        options=[{"label": str(g), "value": g} for g in unique_groups],
-        value=unique_groups[0],
-        clearable=False
-    ),
-
-    # 下拉選單：選取 sample_idx
-    html.Label("選擇 sample_idx："),
-    dcc.Dropdown(
-        id="sample-dropdown",
-        options=[],
-        value=None,
-        clearable=False
-    ),
-
-    # 顯示圖表
-    dcc.Graph(id="prediction-graph")
-])
-
-# === 4) Callback：根據選到的 group，更新 sample-dropdown 的可選範圍 ===
-@app.callback(
-    Output("sample-dropdown", "options"),
-    Output("sample-dropdown", "value"),
-    Input("group-dropdown", "value")
+from data.datasets import SequenceDataset
+from data.scaling import (
+    get_feature_scaler,
+    get_target_scaler,
+    inverse_transform,
+    is_probably_scaled,
+    load_scaler_metadata,
 )
-def update_sample_options(selected_group):
-    if selected_group is None:
-        return [], None
 
-    candidate_samples = get_samples_by_group(selected_group)
-    if not candidate_samples:
-        return [], None
 
-    options = [{"label": str(s), "value": s} for s in candidate_samples]
-    return options, candidate_samples[0]
+def _load_predictions(db_path: str, table_name: str = "model_b_inference") -> pd.DataFrame:
+    conn = sqlite3.connect(db_path)
+    try:
+        df = pd.read_sql_query(f"SELECT * FROM {table_name}", conn)
+    finally:
+        conn.close()
+    return df
 
-# === 5) Callback：根據 group & sample_idx 繪圖 ===
-@app.callback(
-    Output("prediction-graph", "figure"),
-    Input("group-dropdown", "value"),
-    Input("sample-dropdown", "value")
-)
-def update_graph(selected_group, selected_sample):
-    if (selected_group is None) or (selected_sample is None):
-        return go.Figure()
 
-    # 取出該筆資料(只會有一 row)
-    df_sel = df_all[(df_all["group_id"] == selected_group) &
-                    (df_all["sample_idx"] == selected_sample)]
-    if df_sel.empty:
-        return go.Figure()
+def _load_dataset(dataset_path: str) -> SequenceDataset:
+    return SequenceDataset.load(dataset_path)
 
-    # 讀取 valid_length
-    valid_length = int(df_sel["valid_length"].values[0])
 
-    # 讀取 y_1..y_n, p_1..p_n
-    true_values = df_sel[y_cols].values[0]
-    pred_values = df_sel[p_cols].values[0]
+def run_visual_tool(config: Dict) -> None:
+    db_path = config.get("db_path", "artifacts/predictions.db")
+    dataset_path = config.get("dataset_path", "artifacts/test_dataset.npz")
+    forecast_length = config.get("forecast_length")
 
-    # 若想只畫前 valid_length 步, 做 slicing
-    # e.g. true_values[:valid_length], pred_values[:valid_length]
-    # 但若 valid_length=0, 代表完全沒有效, 就不要畫
-    if valid_length > 0:
-        true_values = true_values[:valid_length]
-        pred_values = pred_values[:valid_length]
-    else:
-        # valid_length=0 -> 什麼都不畫
-        return go.Figure()
+    df_all = _load_predictions(db_path)
+    test_dataset = _load_dataset(dataset_path)
+    scaler_metadata_path = config.get("scaler_metadata_path")
+    scaler_metadata = load_scaler_metadata(scaler_metadata_path)
+    close_input_scaler = get_feature_scaler(scaler_metadata, "close")
+    close_target_scaler = get_target_scaler(scaler_metadata, "close")
+    if forecast_length is None:
+        forecast_length = test_dataset.targets.shape[1]
 
-    x_axis = list(range(1, valid_length + 1))
+    y_cols = [f"y_{i+1}" for i in range(forecast_length)]
+    p_cols = [f"p_{i+1}" for i in range(forecast_length)]
+    unique_groups = sorted(df_all["group_id"].unique().tolist())
 
-    # 建立 Plotly traces
-    trace_true = go.Scatter(
-        x=x_axis,
-        y=true_values,
-        mode="lines+markers",
-        name="真實值"
-    )
-    trace_pred = go.Scatter(
-        x=x_axis,
-        y=pred_values,
-        mode="lines+markers",
-        name="預測值"
+    app = dash.Dash(__name__)
+
+    app.layout = html.Div(
+        [
+            html.H3("輸入資料與預測值對照圖"),
+            html.Label("選擇 group："),
+            dcc.Dropdown(
+                id="group-dropdown",
+                options=[{"label": str(g), "value": g} for g in unique_groups],
+                value=unique_groups[0] if unique_groups else None,
+                clearable=False,
+            ),
+            html.Label("選擇 sample_idx："),
+            dcc.Dropdown(id="sample-dropdown", options=[], value=None, clearable=False),
+            dcc.Graph(id="prediction-graph"),
+        ]
     )
 
-    fig = go.Figure(data=[trace_true, trace_pred])
-    fig.update_layout(
-        title=f"Group {selected_group} / Sample {selected_sample} (valid_length={valid_length})",
-        xaxis_title="預測步數 (step)",
-        yaxis_title="數值"
-    )
-    return fig
+    @app.callback(Output("sample-dropdown", "options"), Output("sample-dropdown", "value"), Input("group-dropdown", "value"))
+    def update_sample_options(selected_group):
+        if selected_group is None:
+            return [], None
+        df_group = df_all[df_all["group_id"] == selected_group]
+        candidate_samples = sorted(df_group["sample_idx"].unique().tolist())
+        if not candidate_samples:
+            return [], None
+        options = [{"label": str(s), "value": s} for s in candidate_samples]
+        return options, candidate_samples[0]
 
-if __name__ == "__main__":
-    app.run_server(debug=True)
+    @app.callback(
+        Output("prediction-graph", "figure"),
+        Input("group-dropdown", "value"),
+        Input("sample-dropdown", "value"),
+    )
+    def update_graph(selected_group, selected_sample):
+        if selected_group is None or selected_sample is None:
+            return go.Figure()
+
+        df_sel = df_all[(df_all["group_id"] == selected_group) & (df_all["sample_idx"] == selected_sample)]
+        if df_sel.empty:
+            return go.Figure()
+
+        valid_length = int(df_sel["valid_length"].values[0])
+        true_values = df_sel[y_cols].values[0][:valid_length]
+        pred_values = df_sel[p_cols].values[0][:valid_length]
+
+        if close_target_scaler and is_probably_scaled(true_values, close_target_scaler):
+            true_values = inverse_transform(true_values, close_target_scaler)
+        if close_target_scaler and is_probably_scaled(pred_values, close_target_scaler):
+            pred_values = inverse_transform(pred_values, close_target_scaler)
+        x_forecast = list(range(1, valid_length + 1))
+
+        sample_idx = int(selected_sample)
+        X_sample = test_dataset.inputs[sample_idx]
+        mask_sample = test_dataset.input_mask[sample_idx]
+        effective_input_length = int(np.sum(mask_sample))
+        input_values = X_sample[-effective_input_length:, 3]
+        if close_input_scaler and is_probably_scaled(input_values, close_input_scaler):
+            input_values = inverse_transform(input_values, close_input_scaler)
+        x_input = list(range(-effective_input_length + 1, 1))
+
+        trace_input = go.Scatter(
+            x=x_input,
+            y=input_values,
+            mode="lines+markers",
+            name="輸入資料 (Close)",
+            line=dict(color="blue"),
+        )
+        trace_true = go.Scatter(
+            x=x_forecast,
+            y=true_values,
+            mode="lines+markers",
+            name="實際值",
+            line=dict(color="green"),
+        )
+        trace_pred = go.Scatter(
+            x=x_forecast,
+            y=pred_values,
+            mode="lines+markers",
+            name="模型預測",
+            line=dict(color="red"),
+        )
+
+        shapes = [
+            dict(
+                type="rect",
+                xref="x",
+                yref="paper",
+                x0=min(x_input),
+                y0=0,
+                x1=0,
+                y1=1,
+                fillcolor="lightblue",
+                opacity=0.2,
+                layer="below",
+                line_width=0,
+            ),
+            dict(
+                type="rect",
+                xref="x",
+                yref="paper",
+                x0=0,
+                y0=0,
+                x1=max(x_forecast) if x_forecast else 1,
+                y1=1,
+                fillcolor="lightgreen",
+                opacity=0.2,
+                layer="below",
+                line_width=0,
+            ),
+        ]
+
+        fig = go.Figure(data=[trace_input, trace_true, trace_pred])
+        fig.update_layout(
+            title=(
+                f"Group {selected_group} / Sample {selected_sample} "
+                f"(有效輸入長度={effective_input_length}, 有效預測長度={valid_length})"
+            ),
+            xaxis_title="時間 (負數：輸入，正數：預測)",
+            yaxis_title="數值",
+            shapes=shapes,
+        )
+        return fig
+
+    app.run_server(debug=True, use_reloader=False)
