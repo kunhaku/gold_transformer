@@ -9,9 +9,9 @@ class ModelConfig:
     """Configuration for model architecture and training."""
 
     num_layers: int = 2
-    embed_dim: int = 64
+    embed_dim: int = 16
     num_heads: int = 4
-    ff_dim: int = 128
+    ff_dim: int = 64
     dropout_rate: float = 0.1
     forecast_length: int | None = None
     learning_rate: float = 1e-3
