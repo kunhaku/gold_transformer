@@ -19,7 +19,7 @@ def run_training(
     model_config = model_config or ModelConfig()
     if train_dataset is None:
         data_config = data_config or DataConfig()
-        _, train_dataset, _ = prepare_datasets(data_config)
+        _, train_dataset, _, _, _ = prepare_datasets(data_config)
 
     model, history = train_model(train_dataset, model_config)
     return model

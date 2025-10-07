@@ -11,10 +11,10 @@ class DataConfig:
 
     db_path: str = "mt5_data.db"
     table_name: str = "main.XAUUSD"
-    initial_input_length: int = 36
-    max_input_length: int = 48
-    initial_forecast_length: int = 24
-    min_forecast_length: int = 10
+    initial_input_length: int = 12
+    max_input_length: int = 16
+    initial_forecast_length: int = 5
+    min_forecast_length: int = 3
     train_ratio: float = 0.8
     num_samples_to_visualize: int = 5
     artifact_dir: str = "artifacts"

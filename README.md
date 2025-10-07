@@ -7,12 +7,12 @@ The **Gold Transformer** project provides a refactored pipeline for training and
 | Path | Description |
 | --- | --- |
 | `configs/` | Dataclass definitions for data and model hyperparameters. |
-| `data/` | Utilities for ingesting MT5 data, engineering features, constructing sliding windows, and managing datasets. |
+| `data/` | Utilities for ingesting MT5 data, engineering features, scaling columns, constructing progressive sliding windows, and managing datasets. |
 | `models/` | Recurrent transformer implementation, loss functions, and the training loop. |
 | `evaluation/` | Inference routine that persists predictions to SQLite and computes regression metrics. |
 | `pipelines/` | High-level orchestration for end-to-end training. |
 | `visual_tool.py` | Dash application for inspecting saved predictions. |
-| Legacy helpers (`config.py`, `legacy/data_preprocessing.py`, `legacy/test_model.py`) | Thin wrappers around the refactored modules for existing scripts. |
+| `legacy/` | Archived helpers (old pipelines, MT5 fetch script, batch trainers, config shims). |
 
 ## Requirements
 
@@ -33,11 +33,11 @@ pip install tensorflow pandas numpy scikit-learn tqdm dash plotly MetaTrader5
 
 ## Data ingestion
 
-1. Configure your MetaTrader 5 credentials inside `fetch_XAU.py`.
+1. Configure your MetaTrader 5 credentials inside `legacy/fetch_XAU.py`.
 2. Run the script to download the latest 5-minute XAUUSD candles, store them in `mt5_data.db`, and export a CSV snapshot:
 
    ```bash
-   python fetch_XAU.py
+   python legacy/fetch_XAU.py
    ```
 
    The script creates the database and CSV automatically if they do not already exist.
@@ -51,11 +51,34 @@ pip install tensorflow pandas numpy scikit-learn tqdm dash plotly MetaTrader5
    python -m pipelines.training_pipeline
    ```
 
-   This command loads data, generates rolling windows, trains the recurrent transformer, writes artifacts to the `artifacts/` and `models/` directories, saves predictions to SQLite, and opens the Dash visualization app for inspection.
+   The command performs the full offline loop:
+   - loads raw candles, computes engineered indicators, and scales price-level features (open/high/low/close/Bollinger bands) together with their moving averages using a shared standardisation;
+   - generates progressive sliding windows so every sequence yields a cascade of reveal stages (e.g., initial horizon plus each partial revisit);
+   - trains the recurrent transformer with the autoregressive loop that feeds prior predictions back into the model, while logging scalars to TensorBoard and monitoring validation loss for early stopping;
+   - writes artifacts to `artifacts/` and `models/`; each run is saved under `models/recurrent_transformer/<run-id>` so checkpoints do not collide with active TensorBoard sessions;
+   - runs inference on the held-out split, saving predictions to SQLite; and
+   - opens the Dash visualisation app for interactive inspection.
+
+### Monitoring with TensorBoard
+
+Training now emits TensorBoard summaries by default:
+
+- Logs are written to `models/logs/<run-id>` (or to `ModelConfig.tensorboard_log_dir` if you override it). The run-id matches the subdirectory used for the saved model checkpoint when `save_unique_subdir=True`.
+- Launch TensorBoard from the project root to inspect curves:
+
+  ```bash
+  tensorboard --logdir models/logs
+  ```
+
+- Customise behaviour through `ModelConfig`:
+  - `tensorboard_log_dir`: change or disable logging (`None` to turn it off).
+  - `tensorboard_run_name`: supply a static run label (useful for experiments).
+  - `save_unique_subdir`: set to `False` if you prefer the pre-existing flat save layout (note: keep it `True` when TensorBoard is tailing previous runs).
+  - `early_stopping_patience` / `early_stopping_min_delta`: tweak validation monitoring.
 
 ### Customizing configuration
 
-`DataConfig` and `ModelConfig` define the parameters used throughout the pipeline (e.g., window lengths, feature columns, transformer depth, learning rate). Update their defaults in `configs/data_config.py` and `configs/model_config.py`, or instantiate custom objects in your own scripts:
+`DataConfig` and `ModelConfig` define the parameters used throughout the pipeline (e.g., window lengths, feature columns, transformer depth, learning rate, TensorBoard options). Update their defaults in `configs/data_config.py` and `configs/model_config.py`, or instantiate custom objects in your own scripts:
 
 ```python
 from configs import DataConfig, ModelConfig
@@ -74,7 +97,7 @@ After training, reuse the stored model and dataset artifacts to regenerate predi
 python legacy/test_model.py
 ```
 
-The compatibility wrapper loads the default artifacts and appends a fresh set of predictions to the SQLite database.
+The compatibility wrapper loads the default artifacts, applies the saved scaler metadata, and appends a fresh set of predictions to the SQLite database.
 
 ## Visualizing results
 
@@ -85,6 +108,16 @@ python visual_tool.py
 ```
 
 Pass a custom configuration dictionary if the artifacts live in a different location.
+
+## Revisiting forecasts
+
+The decision layer supports auditing how forecasts evolve as more candles become known. Run the dedicated script to orchestrate training plus the revisit supervisor from the CLI without launching Dash:
+
+```bash
+python scripts/run_revisit.py --epochs 5
+```
+
+This command reuses the training pipeline, then opens a thesis per test sequence and walks through each reveal stage. The resulting summaries contain per-step metrics, prediction deltas versus the initial thesis, and timestamps that can be fed into governance or reporting tools.
 
 ## Troubleshooting
 

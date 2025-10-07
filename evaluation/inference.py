@@ -25,16 +25,6 @@ class ForecastRecord:
     target: np.ndarray
 
 
-def _resolve_target_scaler(
-    *, scaler_metadata: dict | None, scaler_metadata_path: str | None
-) -> dict | None:
-    """Load scaler metadata if it was not explicitly provided."""
-
-    if scaler_metadata is None:
-        scaler_metadata = load_scaler_metadata(scaler_metadata_path)
-    return get_target_scaler(scaler_metadata)
-
-
 def iterate_group_predictions(
     model: tf.keras.Model,
     dataset: SequenceDataset,
@@ -45,14 +35,16 @@ def iterate_group_predictions(
     """Yield predictions for every sample while respecting group order."""
 
     forecast_length = dataset.targets.shape[1]
-    target_scaler = _resolve_target_scaler(
-        scaler_metadata=scaler_metadata, scaler_metadata_path=scaler_metadata_path
-    )
+    if scaler_metadata is None:
+        scaler_metadata = load_scaler_metadata(scaler_metadata_path)
 
     unique_groups = np.unique(dataset.group_ids)
     for group_id in unique_groups:
         indices = np.where(dataset.group_ids == group_id)[0]
         past_preds = tf.zeros((1, forecast_length), dtype=tf.float32)
+        target_scaler = get_target_scaler(
+            scaler_metadata, group_id=int(group_id)
+        )
 
         for step, idx in enumerate(indices):
             x_i = dataset.inputs[idx][None, ...]
@@ -66,7 +58,7 @@ def iterate_group_predictions(
             pred_values = preds.numpy().flatten()
             true_values = y_i.flatten()
 
-            if target_scaler is not None:
+            if target_scaler:
                 pred_values = inverse_transform(pred_values, target_scaler)
                 true_values = inverse_transform(true_values, target_scaler)
 

@@ -14,7 +14,6 @@ from data.scaling import (
     get_feature_scaler,
     get_target_scaler,
     inverse_transform,
-    is_probably_scaled,
     load_scaler_metadata,
 )
 
@@ -32,6 +31,23 @@ def _load_dataset(dataset_path: str) -> SequenceDataset:
     return SequenceDataset.load(dataset_path)
 
 
+def _maybe_inverse(values: np.ndarray, scaler: Dict[str, float] | None) -> np.ndarray:
+    if scaler is None:
+        return values
+    arr = np.asarray(values, dtype=np.float32)
+    finite = arr[np.isfinite(arr)]
+    if finite.size == 0:
+        return arr
+    mean = float(scaler.get("mean", 0.0))
+    scale = float(scaler.get("scale", 1.0))
+    if scale == 0.0:
+        scale = 1.0
+    median_val = float(np.median(finite))
+    if abs(median_val - mean) > scale * 4:
+        return inverse_transform(arr, scaler)
+    return arr
+
+
 def run_visual_tool(config: Dict) -> None:
     db_path = config.get("db_path", "artifacts/predictions.db")
     dataset_path = config.get("dataset_path", "artifacts/test_dataset.npz")
@@ -41,8 +57,6 @@ def run_visual_tool(config: Dict) -> None:
     test_dataset = _load_dataset(dataset_path)
     scaler_metadata_path = config.get("scaler_metadata_path")
     scaler_metadata = load_scaler_metadata(scaler_metadata_path)
-    close_input_scaler = get_feature_scaler(scaler_metadata, "close")
-    close_target_scaler = get_target_scaler(scaler_metadata, "close")
     if forecast_length is None:
         forecast_length = test_dataset.targets.shape[1]
 
@@ -96,10 +110,9 @@ def run_visual_tool(config: Dict) -> None:
         true_values = df_sel[y_cols].values[0][:valid_length]
         pred_values = df_sel[p_cols].values[0][:valid_length]
 
-        if close_target_scaler and is_probably_scaled(true_values, close_target_scaler):
-            true_values = inverse_transform(true_values, close_target_scaler)
-        if close_target_scaler and is_probably_scaled(pred_values, close_target_scaler):
-            pred_values = inverse_transform(pred_values, close_target_scaler)
+        group_scaler = get_target_scaler(scaler_metadata, group_id=selected_group)
+        true_values = _maybe_inverse(true_values, group_scaler)
+        pred_values = _maybe_inverse(pred_values, group_scaler)
         x_forecast = list(range(1, valid_length + 1))
 
         sample_idx = int(selected_sample)
@@ -107,8 +120,8 @@ def run_visual_tool(config: Dict) -> None:
         mask_sample = test_dataset.input_mask[sample_idx]
         effective_input_length = int(np.sum(mask_sample))
         input_values = X_sample[-effective_input_length:, 3]
-        if close_input_scaler and is_probably_scaled(input_values, close_input_scaler):
-            input_values = inverse_transform(input_values, close_input_scaler)
+        input_scaler = get_feature_scaler(scaler_metadata, "close", group_id=selected_group)
+        input_values = _maybe_inverse(input_values, input_scaler)
         x_input = list(range(-effective_input_length + 1, 1))
 
         trace_input = go.Scatter(

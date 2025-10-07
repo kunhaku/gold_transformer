@@ -7,7 +7,7 @@ from typing import Any, Iterable, Mapping, Sequence
 
 import numpy as np
 
-from config import DataConfig, ModelConfig
+from configs import DataConfig, ModelConfig
 from decision import RevisitSupervisor
 from data.datasets import SequenceDataset
 from pipelines.training_pipeline import run_training_pipeline

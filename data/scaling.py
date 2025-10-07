@@ -4,11 +4,45 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, Mapping, MutableMapping, Optional, Sequence
+from typing import Any, Iterable, Mapping, MutableMapping, Optional, Sequence
 
 import numpy as np
+import pandas as pd
 
 ScalerParams = Mapping[str, Any]
+
+
+def scale_price_with_mas(
+    frame: "pd.DataFrame",
+    *,
+    price_columns: Iterable[str],
+    ma_columns: Iterable[str],
+) -> tuple["pd.DataFrame", dict[str, dict[str, float]], dict[str, float]]:
+    """Return a copy of *frame* where price and MA columns share one scaler.
+
+    The combined set of ``price_columns`` and ``ma_columns`` is standardised
+    using a single mean/scale pair so that moving averages are expressed in
+    the same normalised units as the underlying prices.
+    """
+
+    candidate_cols = list(dict.fromkeys([*price_columns, *ma_columns]))
+    columns = [col for col in candidate_cols if col in frame.columns]
+    if not columns:
+        return frame.copy(), {}, {}
+
+    values = frame[columns].to_numpy(dtype=np.float64)
+    mean = float(np.mean(values))
+    scale = float(np.std(values))
+    if scale == 0.0:
+        scale = 1.0
+
+    scaled_frame = frame.copy()
+    scaled_frame.loc[:, columns] = (scaled_frame[columns] - mean) / scale
+    metadata = {col: {"mean": mean, "scale": scale} for col in columns}
+    target_metadata: dict[str, float] = {}
+    if "close" in columns:
+        target_metadata = {"mean": mean, "scale": scale}
+    return scaled_frame, metadata, target_metadata
 
 
 def save_scaler_metadata(
@@ -104,18 +138,60 @@ def _get_named_metadata(container: Any, column: str) -> Optional[ScalerParams]:
     return None
 
 
-def get_feature_scaler(metadata: Mapping[str, Any] | None, column: str) -> Optional[ScalerParams]:
+def _find_group_stats(container: Any, group_key: str) -> Optional[ScalerParams]:
+    """Search *container* recursively for group-specific scaler stats."""
+
+    if container is None:
+        return None
+
+    if isinstance(container, Mapping):
+        candidate = container.get(group_key)
+        if isinstance(candidate, Mapping):
+            return candidate
+        for value in container.values():
+            result = _find_group_stats(value, group_key)
+            if result is not None:
+                return result
+
+    if isinstance(container, Sequence) and not isinstance(container, (str, bytes)):
+        for item in container:
+            result = _find_group_stats(item, group_key)
+            if result is not None:
+                return result
+
+    return None
+
+
+def get_feature_scaler(
+    metadata: Mapping[str, Any] | None,
+    column: str,
+    *,
+    group_id: int | str | None = None,
+) -> Optional[ScalerParams]:
     """Extract scaler parameters for an input *column* from *metadata*."""
 
     if not metadata:
         return None
     features = metadata.get("features")
+    if features is None:
+        return None
+
+    if group_id is not None:
+        group_key = str(group_id)
+        group_section = features.get(group_key)
+        if isinstance(group_section, Mapping):
+            result = _get_named_metadata(group_section, column)
+            if result is not None:
+                return result
+
     return _get_named_metadata(features, column)
 
 
 def get_target_scaler(
     metadata: Mapping[str, Any] | None,
     target_column: str = "close",
+    *,
+    group_id: int | str | None = None,
 ) -> Optional[ScalerParams]:
     """Extract scaler parameters for the target column from *metadata*."""
 
@@ -125,6 +201,11 @@ def get_target_scaler(
     target_section = metadata.get("target")
     if target_section is None:
         return None
+    if group_id is not None:
+        group_key = str(group_id)
+        group_stats = _find_group_stats(target_section, group_key)
+        if isinstance(group_stats, Mapping):
+            return group_stats
     return _get_named_metadata(target_section, target_column)
 
 

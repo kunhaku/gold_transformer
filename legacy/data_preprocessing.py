@@ -3,7 +3,13 @@
 from __future__ import annotations
 
 from configs import DataConfig
-from data.datasets import SequenceDataset, build_sequence_dataset, split_train_test
+from data.datasets import (
+    SequenceDataset,
+    build_sequence_dataset,
+    split_train_test,
+    _scale_dataset_per_group,
+    compute_past_targets,
+)
 from data.features import build_feature_frame
 from data.ingest import load_mt5_data as _load_mt5_data
 from data.windowing import create_sliding_windows
@@ -26,14 +32,22 @@ def prepare_data_and_split(
     data_config = config if isinstance(config, DataConfig) else DataConfig()
 
     if df is None:
-        dataset = build_sequence_dataset(data_config)
+        dataset, _, _ = build_sequence_dataset(data_config)
     else:
         if isinstance(df, SequenceDataset):
             dataset = df
         else:
             feature_matrix = df[data_config.feature_columns()].values
             X, y, mask, y_mask, group_ids = create_sliding_windows(feature_matrix, data_config)
-            dataset = SequenceDataset(X, y, mask, y_mask, group_ids)
+            raw_dataset = SequenceDataset(
+                inputs=X,
+                targets=y,
+                input_mask=mask,
+                target_mask=y_mask,
+                past_targets=compute_past_targets(y, y_mask, group_ids),
+                group_ids=group_ids,
+            )
+            dataset, _, _ = _scale_dataset_per_group(raw_dataset, data_config)
 
     train_dataset, test_dataset = split_train_test(dataset, data_config)
     return (

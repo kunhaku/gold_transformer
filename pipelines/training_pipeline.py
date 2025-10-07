@@ -4,6 +4,7 @@ from typing import Tuple
 
 from configs import DataConfig, ModelConfig
 from data.datasets import SequenceDataset, prepare_datasets
+from data.scaling import save_scaler_metadata
 from evaluation import run_inference
 from models import train_model
 from utils.io import ensure_directory
@@ -27,13 +28,27 @@ def run_training_pipeline(
     ensure_directory(str(data_config.artifact_path("placeholder")))
     ensure_directory(str(model_config.model_path()))
 
-    full_dataset, train_dataset, test_dataset = prepare_datasets(data_config)
+    (
+        full_dataset,
+        train_dataset,
+        test_dataset,
+        feature_scaler_metadata,
+        target_scaler_metadata,
+    ) = prepare_datasets(data_config)
     train_path, test_path = _save_artifacts(data_config, train_dataset, test_dataset)
 
-    model, history = train_model(train_dataset, model_config)
+    model, history = train_model(train_dataset, model_config, validation_data=test_dataset)
+    model_artifact_path = (
+        model_config.last_run_model_path if model_config.last_run_model_path is not None else model_config.model_path()
+    )
 
     prediction_db_path = str(data_config.artifact_path(data_config.prediction_db_filename))
     scaler_metadata_path = str(data_config.artifact_path(data_config.scaler_metadata_filename))
+    save_scaler_metadata(
+        scaler_metadata_path,
+        feature_metadata=feature_scaler_metadata,
+        target_metadata=target_scaler_metadata if target_scaler_metadata else None,
+    )
     inference_metrics = run_inference(
         model,
         test_dataset,
@@ -56,11 +71,15 @@ def run_training_pipeline(
             "test_dataset": test_path,
             "prediction_db": prediction_db_path,
             "scaler_metadata": scaler_metadata_path,
-            "model_path": str(model_config.model_path()),
+            "model_path": str(model_artifact_path),
         },
         "training_history": history,
         "inference_metrics": inference_metrics,
         "model": model,
+        "scaler_metadata": {
+            "features": feature_scaler_metadata,
+            "target": target_scaler_metadata,
+        },
         "datasets": {
             "full": full_dataset,
             "train": train_dataset,
